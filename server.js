@@ -209,6 +209,9 @@ async function fetchBTCCandles(interval = "5m", limit = 150) {
   const url = `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=${interval}&limit=${limit}`;
   const res = await fetch(url);
   const data = await res.json();
+  if (!Array.isArray(data)) {
+    throw new Error("Binance API error: " + JSON.stringify(data).slice(0, 200));
+  }
   return data.map(k => ({
     time:  k[0],
     open:  parseFloat(k[1]),
