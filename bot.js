@@ -17,7 +17,12 @@ function post(url, body) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
     const u = new URL(url);
-    const req = https.request({ hostname: u.hostname, path: u.pathname, method: "POST", headers: { "Content-Type": "application/json", "Content-Length": data.length } }, res => {
+    const req = https.request({
+      hostname: u.hostname,
+      path: u.pathname,
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) }
+    }, res => {
       res.on("data", () => {});
       res.on("end", resolve);
     });
@@ -28,7 +33,11 @@ function post(url, body) {
 }
 
 function sendTelegram(msg) {
-  return post(`https://api.telegram.org/bot${TOKEN}/sendMessage`, { chat_id: CHAT_ID, text: msg, parse_mode: "HTML" });
+  return post(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+    chat_id: CHAT_ID,
+    text: msg,
+    parse_mode: "Markdown"
+  });
 }
 
 function calcEMA(vals, p) {
@@ -41,14 +50,14 @@ function calcEMA(vals, p) {
 function calcRSI(closes, p = 14) {
   let ag = 0, al = 0;
   for (let i = 1; i <= p; i++) {
-    const d = closes[i] - closes[i-1];
+    const d = closes[i] - closes[i - 1];
     if (d > 0) ag += d; else al -= d;
   }
   ag /= p; al /= p;
   for (let i = p + 1; i < closes.length; i++) {
-    const d = closes[i] - closes[i-1];
-    ag = (ag * (p-1) + Math.max(d, 0)) / p;
-    al = (al * (p-1) + Math.max(-d, 0)) / p;
+    const d = closes[i] - closes[i - 1];
+    ag = (ag * (p - 1) + Math.max(d, 0)) / p;
+    al = (al * (p - 1) + Math.max(-d, 0)) / p;
   }
   return al === 0 ? 100 : Math.round(100 - 100 / (1 + ag / al));
 }
@@ -63,37 +72,47 @@ async function run() {
     const highs  = candles.map(c => parseFloat(c[2]));
     const lows   = candles.map(c => parseFloat(c[3]));
 
-    const price = closes[closes.length - 1];
-    const ema20 = calcEMA(closes, 20);
-    const ema50 = calcEMA(closes, 50);
-    const rsi   = calcRSI(closes);
+    const price      = closes[closes.length - 1];
+    const ema20      = calcEMA(closes, 20);
+    const ema50      = calcEMA(closes, 50);
+    const rsi        = calcRSI(closes);
     const support    = Math.min(...lows.slice(-20));
     const resistance = Math.max(...highs.slice(-20));
 
     let score = 0;
     if (ema20 > ema50) score += 2; else score -= 2;
-    if (rsi < 35) score += 1;
-    else if (rsi > 65) score -= 1;
-    else if (rsi > 50) score += 1;
-    else score -= 1;
+    if (rsi < 35)       score += 1;
+    else if (rsi > 65)  score -= 1;
+    else if (rsi > 50)  score += 1;
+    else                score -= 1;
 
     const action = score >= 2 ? "ACHÈTE 🟢" : score <= -2 ? "VENDS 🔴" : "ATTENDS 🟡";
 
     console.log(`${new Date().toISOString()} | ${action} | $${price.toFixed(0)} | RSI: ${rsi} | Score: ${score}`);
 
     if (prevAction !== null && action !== prevAction) {
-      await sendTelegram(
-        `🔔 <b>SIGNAL BTC CHANGÉ</b>\n\n<b>${action}</b>\n\n💰 Prix: <b>$${price.toLocaleString()}</b>\n📊 RSI: ${rsi}\n📈 EMA20: ${ema20.toFixed(0)} | EMA50: ${ema50.toFixed(0)}\n🎯 Support: $${support.toFixed(0)}\n🎯 Résistance: $${resistance.toFixed(0)}\n\n<i>Not financial advice</i>`
-      );
+      const msg =
+        `🔔 *SIGNAL BTC CHANGÉ*\n\n` +
+        `*${action}*\n\n` +
+        `💰 Prix: *$${Math.round(price).toLocaleString()}*\n` +
+        `📊 RSI: ${rsi}\n` +
+        `📈 EMA20: ${Math.round(ema20)} | EMA50: ${Math.round(ema50)}\n` +
+        `🎯 Support: $${Math.round(support).toLocaleString()}\n` +
+        `🎯 Résistance: $${Math.round(resistance).toLocaleString()}\n\n` +
+        `_Not financial advice_`;
+
+      await sendTelegram(msg);
       console.log(`✅ Telegram envoyé: ${prevAction} → ${action}`);
     }
+
     prevAction = action;
-  } catch(e) {
+
+  } catch (e) {
     console.error("Erreur:", e.message);
   }
 }
 
 console.log("BTC Signal Bot démarré ✅");
-sendTelegram("🤖 <b>BTC Signal Bot démarré</b>\nSurveillance BTC/USD M5 active.");
+sendTelegram("🤖 *BTC Signal Bot démarré*\nSurveillance BTC/USD M5 active\\.");
 run();
 setInterval(run, 60000);
