@@ -230,24 +230,29 @@ function generateSignal(candles) {
 // ─────────────────────────────────────────────
 
 async function fetchBTCCandles() {
-  // CoinGecko OHLC API — no geo restriction, free, no API key
-  const url = "https://api.coingecko.com/api/v3/coins/bitcoin/ohlc?vs_currency=usd&days=1";
+  // Kraken OHLC API — no geo restrictions worldwide
+  // interval=5 = 5 minutes, last 150 candles
+  const url = "https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=5";
   const res = await fetch(url, {
     headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" }
   });
-  if (!res.ok) throw new Error("CoinGecko HTTP " + res.status);
+  if (!res.ok) throw new Error("Kraken HTTP " + res.status);
   const data = await res.json();
-  if (!Array.isArray(data) || data.length === 0) {
-    throw new Error("CoinGecko bad response: " + JSON.stringify(data).slice(0, 100));
+  if (data.error && data.error.length > 0) {
+    throw new Error("Kraken error: " + data.error.join(", "));
   }
-  // CoinGecko format: [timestamp, open, high, low, close]
-  return data.map(k => ({
-    time:  k[0],
+  // Kraken format: [time, open, high, low, close, vwap, volume, count]
+  const candles = data.result?.XXBTZUSD || data.result?.XBTUSD || Object.values(data.result || {})[0];
+  if (!Array.isArray(candles) || candles.length === 0) {
+    throw new Error("Kraken bad response: " + JSON.stringify(data).slice(0, 100));
+  }
+  return candles.slice(-150).map(k => ({
+    time:  k[0] * 1000,
     open:  parseFloat(k[1]),
     high:  parseFloat(k[2]),
     low:   parseFloat(k[3]),
     close: parseFloat(k[4]),
-    vol:   0,
+    vol:   parseFloat(k[6]),
   }));
 }
 
