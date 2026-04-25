@@ -297,13 +297,13 @@ function analyzesSMC(candles) {
   // TP / SL basés sur ATR + niveau sweepé
   let sl, tp1, tp2;
   if (signal === "BUY") {
-    sl  = Math.round(sweep ? sweep.sweptLevel - atr * 0.5 : price - atr * 1.5);
-    tp1 = Math.round(price + atr * 2);
-    tp2 = Math.round(price + atr * 4);
+    sl  = parseFloat((sweep ? sweep.sweptLevel - atr * 0.5 : price - atr * 1.5).toFixed(2));
+    tp1 = parseFloat((price + atr * 2).toFixed(2));
+    tp2 = parseFloat((price + atr * 4).toFixed(2));
   } else {
-    sl  = Math.round(sweep ? sweep.sweptLevel + atr * 0.5 : price + atr * 1.5);
-    tp1 = Math.round(price - atr * 2);
-    tp2 = Math.round(price - atr * 4);
+    sl  = parseFloat((sweep ? sweep.sweptLevel + atr * 0.5 : price + atr * 1.5).toFixed(2));
+    tp1 = parseFloat((price - atr * 2).toFixed(2));
+    tp2 = parseFloat((price - atr * 4).toFixed(2));
   }
 
   const rr = Math.abs(tp1 - price) / Math.abs(price - sl);
@@ -369,22 +369,27 @@ async function run() {
     const emoji  = result.signal === "BUY" ? "🟢" : "🔴";
     const action = result.signal === "BUY" ? "ACHÈTE" : "VENDS";
 
+    // Pips BTC = $1 par pip
+    const slPips  = Math.abs(Math.round(result.price - result.sl));
+    const tp1Pips = Math.abs(Math.round(result.tp1  - result.price));
+    const tp2Pips = Math.abs(Math.round(result.tp2  - result.price));
+
     const msg =
       `${emoji} *SIGNAL BTC — ${action}*\n` +
       `📍 Session: ${kz}\n\n` +
-      `💰 Entrée: *$${Math.round(result.price).toLocaleString()}*\n` +
-      `🛑 Stop Loss: *$${result.sl.toLocaleString()}*\n` +
-      `🎯 TP1: *$${result.tp1.toLocaleString()}*\n` +
-      `🎯 TP2: *$${result.tp2.toLocaleString()}*\n` +
-      `⚖️ Ratio R/R: *1:${result.rr.toFixed(1)}*\n\n` +
+      `💰 Entrée: *$${result.price.toFixed(2)}*\n` +
+      `🛑 SL: *${slPips} pips* ($${result.sl.toFixed(2)})\n` +
+      `🎯 TP1: *${tp1Pips} pips* ($${result.tp1.toFixed(2)})\n` +
+      `🎯 TP2: *${tp2Pips} pips* ($${result.tp2.toFixed(2)})\n` +
+      `⚖️ R/R: *1:${result.rr.toFixed(1)}*\n\n` +
       `*Confluences (${result.confluences}/5):*\n` +
       result.reasons.join("\n") + "\n\n" +
-      `📊 RSI: ${result.rsi} | ATR: $${Math.round(result.atr)}\n` +
-      `📈 EMA50: $${Math.round(result.ema50).toLocaleString()} | EMA200: $${Math.round(result.ema200).toLocaleString()}\n\n` +
+      `📊 RSI: ${result.rsi} | ATR: ${Math.round(result.atr)} pips\n` +
+      `📈 EMA50: $${result.ema50.toFixed(2)} | EMA200: $${result.ema200.toFixed(2)}\n\n` +
       `_Not financial advice_`;
 
     await sendTelegram(msg);
-    console.log(`✅ Signal envoyé: ${action} | $${Math.round(result.price)}`);
+    console.log(`✅ Signal envoyé: ${action} | $${result.price.toFixed(2)}`);
 
   } catch(e) {
     console.error("Erreur:", e.message);
