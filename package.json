@@ -1,12 +1,8 @@
 {
-  "name": "btc-analyzer",
+  "name": "xau-signal",
   "version": "1.0.0",
-  "main": "server.js",
+  "main": "xaubot_signal.js",
   "scripts": {
-    "start": "node server.js"
-  },
-  "dependencies": {
-    "express": "^4.18.2",
-    "node-fetch": "^2.7.0"
+    "start": "node xaubot_signal.js"
   }
 }
