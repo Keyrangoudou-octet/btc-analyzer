@@ -203,6 +203,52 @@ function detectBOS(candles, swings) {
   return null;
 }
 
+
+// ─────────────────────────────────────────────
+//  FIBONACCI RETRACEMENT
+//  Calculé sur le dernier swing high/low significatif
+// ─────────────────────────────────────────────
+
+function calcFibonacci(swings, direction) {
+  const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+  
+  if (direction === "BULLISH") {
+    // Fibo sur swing low → swing high (retracement baissier)
+    const swingLow  = swings.swingLows.slice(-1)[0];
+    const swingHigh = swings.swingHighs.slice(-1)[0];
+    if (!swingLow || !swingHigh) return null;
+    const range = swingHigh.price - swingLow.price;
+    return {
+      swingHigh: swingHigh.price,
+      swingLow:  swingLow.price,
+      f236: parseFloat((swingHigh.price - range * 0.236).toFixed(2)),
+      f382: parseFloat((swingHigh.price - range * 0.382).toFixed(2)),
+      f500: parseFloat((swingHigh.price - range * 0.5).toFixed(2)),
+      f618: parseFloat((swingHigh.price - range * 0.618).toFixed(2)),
+      f786: parseFloat((swingHigh.price - range * 0.786).toFixed(2)),
+    };
+  } else {
+    // Fibo sur swing high → swing low (retracement haussier)
+    const swingHigh = swings.swingHighs.slice(-1)[0];
+    const swingLow  = swings.swingLows.slice(-1)[0];
+    if (!swingLow || !swingHigh) return null;
+    const range = swingHigh.price - swingLow.price;
+    return {
+      swingHigh: swingHigh.price,
+      swingLow:  swingLow.price,
+      f236: parseFloat((swingLow.price + range * 0.236).toFixed(2)),
+      f382: parseFloat((swingLow.price + range * 0.382).toFixed(2)),
+      f500: parseFloat((swingLow.price + range * 0.5).toFixed(2)),
+      f618: parseFloat((swingLow.price + range * 0.618).toFixed(2)),
+      f786: parseFloat((swingLow.price + range * 0.786).toFixed(2)),
+    };
+  }
+}
+
+function priceNearFibLevel(price, fibLevel, atr) {
+  return Math.abs(price - fibLevel) <= atr * 0.3;
+}
+
 // ─────────────────────────────────────────────
 //  LOGIQUE PRINCIPALE SMC
 // ─────────────────────────────────────────────
@@ -222,6 +268,16 @@ function analyzesSMC(candles) {
 
   // Trend HTF : EMA50 vs EMA200
   const htfBull = ema50 > ema200;
+
+  // Fibonacci levels
+  const fibBull = calcFibonacci(swings, "BULLISH");
+  const fibBear = calcFibonacci(swings, "BEARISH");
+
+  // Prix proche d'un niveau Fibo clé ?
+  const nearBullFib618 = fibBull && priceNearFibLevel(price, fibBull.f618, atr);
+  const nearBullFib786 = fibBull && priceNearFibLevel(price, fibBull.f786, atr);
+  const nearBearFib618 = fibBear && priceNearFibLevel(price, fibBear.f618, atr);
+  const nearBearFib786 = fibBear && priceNearFibLevel(price, fibBear.f786, atr);
 
   // Prix dans un FVG récent ?
   const inBullFVG = fvgs.some(f => f.type === "BULL" && price >= f.low && price <= f.high);
@@ -256,6 +312,13 @@ function analyzesSMC(candles) {
     confluences++;
     reasons.push(`✅ Prix dans un Fair Value Gap haussier`);
   }
+  if (nearBullFib618) {
+    confluences++;
+    reasons.push(`✅ Prix au niveau Fibo 0.618 ($${fibBull.f618.toFixed(2)}) — Golden Zone`);
+  } else if (nearBullFib786) {
+    confluences++;
+    reasons.push(`✅ Prix au niveau Fibo 0.786 ($${fibBull.f786.toFixed(2)})`);
+  }
 
   if (sweep && sweep.type === "BULLISH_SWEEP" && bos && bos.type === "BULLISH_BOS" && confluences >= 3) {
     signal = "BUY";
@@ -286,6 +349,13 @@ function analyzesSMC(candles) {
       confluences++;
       reasons.push(`✅ Prix dans un Fair Value Gap baissier`);
     }
+    if (nearBearFib618) {
+      confluences++;
+      reasons.push(`✅ Prix au niveau Fibo 0.618 ($${fibBear.f618.toFixed(2)}) — Golden Zone`);
+    } else if (nearBearFib786) {
+      confluences++;
+      reasons.push(`✅ Prix au niveau Fibo 0.786 ($${fibBear.f786.toFixed(2)})`);
+    }
 
     if (sweep && sweep.type === "BEARISH_SWEEP" && bos && bos.type === "BEARISH_BOS" && confluences >= 3) {
       signal = "SELL";
@@ -308,7 +378,8 @@ function analyzesSMC(candles) {
 
   const rr = Math.abs(tp1 - price) / Math.abs(price - sl);
 
-  return { signal, price, sl, tp1, tp2, rsi, atr, rr, reasons, confluences, ema50, ema200 };
+  const fib = signal === "BUY" ? fibBull : fibBear;
+  return { signal, price, sl, tp1, tp2, rsi, atr, rr, reasons, confluences, ema50, ema200, fib };
 }
 
 // ─────────────────────────────────────────────
@@ -385,8 +456,15 @@ async function run() {
       `*Confluences (${result.confluences}/5):*\n` +
       result.reasons.join("\n") + "\n\n" +
       `📊 RSI: ${result.rsi} | ATR: ${Math.round(result.atr)} pips\n` +
-      `📈 EMA50: $${result.ema50.toFixed(2)} | EMA200: $${result.ema200.toFixed(2)}\n\n` +
-      `_Not financial advice_`;
+      `📈 EMA50: $${result.ema50.toFixed(2)} | EMA200: $${result.ema200.toFixed(2)}\n` +
+      (result.fib ? 
+        `\n*Niveaux Fibonacci:*\n` +
+        `0.236 → $${result.fib.f236}\n` +
+        `0.382 → $${result.fib.f382}\n` +
+        `0.500 → $${result.fib.f500}\n` +
+        `0.618 → *$${result.fib.f618}* ⭐\n` +
+        `0.786 → $${result.fib.f786}\n` : "") +
+      `\n_Not financial advice_`;
 
     await sendTelegram(msg);
     console.log(`✅ Signal envoyé: ${action} | $${result.price.toFixed(2)}`);
