@@ -4,6 +4,7 @@
 import asyncio, logging, os, time, requests, pandas as pd
 from datetime import datetime, timezone
 from telegram import Bot
+from telegram.request import HTTPXRequest
 
 TELEGRAM_TOKEN   = os.environ["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
@@ -12,9 +13,7 @@ TWELVE_API_KEY   = os.environ["TWELVE_API_KEY"]
 SCAN_INTERVAL = 180
 SIGNAL_COOLDOWN = 900
 
-FUTURES_OFFSET = 57.8  # GC1! - XAU/USD mesure le 07/08/2026 (4399.7 - 4341.9)
-                       # ATTENTION : cet offset diminue chaque semaine a l'approche de l'expiry
-                       # Remesure a chaque roll de contrat (environ tous les 2 mois)
+FUTURES_OFFSET = 57.8
 
 XAUUSD_CONFIG = {
     "symbol": "XAU/USD", "label": "XAUUSD (MGC offset +{})".format(FUTURES_OFFSET),
@@ -322,9 +321,15 @@ def format_message(label, direction, price, sl, tp1, tp2, tp3, val, htf, fib, fi
 last_signal = {"XAUUSD": {"direction": None, "type": None, "ts": 0}}
 
 async def main():
-    bot = Bot(token=TELEGRAM_TOKEN)
-    await bot.send_message(chat_id=TELEGRAM_CHAT_ID,
-        text="XauBot Signal v19 demarre\nScan 3min | Lun-Jeu 8h-19h UTC | Ven 8h-17h UTC | ADX 25 | RSI + Fibo | FVG 15M | OB 15M | M30 | Cooldown 15min | LIMIT AUTO | FUTURES OFFSET +57.8$")
+    bot = Bot(token=TELEGRAM_TOKEN, request=HTTPXRequest(read_timeout=30, connect_timeout=30, write_timeout=30))
+    for attempt in range(5):
+        try:
+            await bot.send_message(chat_id=TELEGRAM_CHAT_ID,
+                text="XauBot Signal v19 demarre\nScan 3min | Lun-Jeu 8h-19h UTC | Ven 8h-17h UTC | ADX 25 | RSI + Fibo | FVG 15M | OB 15M | M30 | Cooldown 15min | LIMIT AUTO | FUTURES OFFSET +57.8$")
+            break
+        except Exception as e:
+            log.error(f"Startup msg attempt {attempt+1}: {e}")
+            await asyncio.sleep(10)
     log.info("Bot demarre v19")
     while True:
         try:
@@ -340,14 +345,11 @@ async def main():
                     await bot.send_message(chat_id=TELEGRAM_CHAT_ID,
                         text=format_message("XAUUSD",d,p,sl,tp1,tp2,tp3,v,htf,fib,fl,st,pat,rsiv,fvg,ob))
                     last_signal["XAUUSD"] = {"direction": d, "type": st, "ts": time.time()}
-                    fvg_log = (fvg[0]+" ["+str(fvg[1])+"-"+str(fvg[2])+"]") if fvg else "no FVG"
-                    log.info("XAUUSD "+st+" "+d+" @ "+str(p)+" | "+htf+" | RSI "+str(rsiv)+" | Fibo "+str(fl)+" | FVG "+fvg_log+" | "+str(pat))
                     await asyncio.sleep(2)
                     limit_data = calc_limit_entry(d, p, fib, fvg, ob, atr_v)
                     limit_msg  = format_limit_message("XAUUSD", d, p, limit_data, atr_v)
                     if limit_msg:
                         await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=limit_msg)
-                        log.info("Limit calcule: " + str(limit_data))
         except Exception as e:
             log.error("Erreur: "+str(e))
         await asyncio.sleep(SCAN_INTERVAL)
